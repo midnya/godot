@@ -1631,8 +1631,6 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 					}
 					undo_redo->add_do_method(node, "set_meta", META_MARKED_FOR_EXPOSURE, true);
 					undo_redo->add_undo_method(node, "remove_meta", META_MARKED_FOR_EXPOSURE);
-					undo_redo->add_do_method(scene_tree, "update_tree");
-					undo_redo->add_undo_method(scene_tree, "update_tree");
 				} else if (!enabling && is_exposed) {
 					// Only unexpose nodes that are currently exposed
 					undo_redo->add_do_method(node, "remove_meta", META_MARKED_FOR_EXPOSURE);
@@ -1641,10 +1639,10 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 						undo_redo->add_do_method(node, "remove_meta", META_EXPOSED_IN_OWNER);
 						undo_redo->add_undo_method(node, "set_meta", META_EXPOSED_IN_OWNER, true);
 					}
-					undo_redo->add_do_method(scene_tree, "update_tree");
-					undo_redo->add_undo_method(scene_tree, "update_tree");
 				}
 			}
+			undo_redo->add_do_method(scene_tree, "update_tree");
+			undo_redo->add_undo_method(scene_tree, "update_tree");
 			undo_redo->commit_action();
 		} break;
 		case TOOL_CREATE_2D_SCENE:
