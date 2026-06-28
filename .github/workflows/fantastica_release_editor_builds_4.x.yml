@@ -45,6 +45,9 @@ jobs:
       - name: Setup Python and SCons
         uses: ./.github/actions/godot-deps
 
+      - name: Install mold linker
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
@@ -64,7 +67,7 @@ jobs:
       - name: Compilation
         uses: ./.github/actions/godot-build
         with:
-          scons-flags: ${{ env.FLAGS_BUILD }} ${{ env.FLAGS_OPTIMIZE }} ${{ env.FLAGS_MODULES }} ${{ env.FLAGS_DEBUG }} linker=lld accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }}
+          scons-flags: ${{ env.FLAGS_BUILD }} ${{ env.FLAGS_OPTIMIZE }} ${{ env.FLAGS_MODULES }} ${{ env.FLAGS_DEBUG }} linker=mold accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }}
           platform: linuxbsd
           target: editor
 
