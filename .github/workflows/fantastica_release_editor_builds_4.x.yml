@@ -14,7 +14,8 @@ env:
   FLAGS_BUILD: production=yes use_llvm=yes
   FLAGS_OPTIMIZE: scu_build=yes optimize=speed_trace lto=thin
   FLAGS_MODULES: module_mono_enabled=yes
-  FLAGS_DEBUG: debug_symbols=yes separate_debug_symbols=yes
+  FLAGS_DEBUG: ""
+  # FLAGS_DEBUG: debug_symbols=yes separate_debug_symbols=yes
 
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
