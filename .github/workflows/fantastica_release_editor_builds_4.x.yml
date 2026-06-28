@@ -12,7 +12,7 @@ env:
   BUILD_NAME: Fantastica
 
   FLAGS_BUILD: production=yes use_llvm=yes
-  FLAGS_OPTIMIZE: scu_build=yes optimize=speed_trace lto=full
+  FLAGS_OPTIMIZE: scu_build=yes optimize=speed_trace lto=thin
   FLAGS_MODULES: module_mono_enabled=yes
   FLAGS_DEBUG: debug_symbols=yes separate_debug_symbols=yes
 
