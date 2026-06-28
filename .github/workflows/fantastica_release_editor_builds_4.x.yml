@@ -1,0 +1,288 @@
+name: Fantastica Release Editor Builds (4.x)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string"
+        required: true
+        type: string
+
+env:
+  BUILD_NAME: Fantastica
+
+  FLAGS_BUILD: production=yes use_llvm=yes
+  FLAGS_OPTIMIZE: scu_build=yes optimize=speed_trace lto=full
+  FLAGS_MODULES: module_mono_enabled=yes
+  FLAGS_DEBUG: debug_symbols=yes separate_debug_symbols=yes
+
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_VERSION: "8.0"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    name: 🐧 Linux Editor (Mono)
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-bin
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: fantastica-linux-editor-mono
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download pre-built AccessKit
+        shell: sh
+        id: accesskit-sdk
+        run: |
+          if python ./misc/scripts/install_accesskit.py; then
+            echo "ACCESSKIT_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::AccessKit SDK installation failed, building without AccessKit support."
+            echo "ACCESSKIT_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.FLAGS_BUILD }} ${{ env.FLAGS_OPTIMIZE }} ${{ env.FLAGS_MODULES }} ${{ env.FLAGS_DEBUG }} linker=lld accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }}
+          platform: linuxbsd
+          target: editor
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: fantastica-linux-editor-mono
+        continue-on-error: true
+
+      - name: Generate .NET glue
+        run: |
+          ./bin/godot.linuxbsd.editor.x86_64.llvm.mono --headless --generate-mono-glue ./modules/mono/glue
+
+      - name: Build .NET assemblies (GodotSharp)
+        run: |
+          dotnet --info
+          python ./modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=linuxbsd
+
+      - name: Sanity check
+        run: |
+          ./bin/godot.linuxbsd.editor.x86_64.llvm.mono --version
+
+      - name: Prepare artifact
+        run: |
+          rm -rf ./bin/build_deps
+          mv ./bin/godot.linuxbsd.editor.x86_64.llvm.mono "./bin/Godot_${{ inputs.version }}-fantastica_linux"
+          chmod +x "./bin/Godot_${{ inputs.version }}-fantastica_linux"
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: Godot_${{ inputs.version }}-fantastica_linux
+
+  build-windows:
+    runs-on: windows-latest
+    name: 🏁 Windows Editor (Mono)
+    timeout-minutes: 120
+    env:
+      SCONS_CACHE_MSVC_CONFIG: true
+      PYTHONIOENCODING: utf8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: fantastica-windows-editor-mono
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download pre-built ANGLE
+        shell: sh
+        id: angle-sdk
+        run: |
+          if python ./misc/scripts/install_angle.py; then
+            echo "ANGLE_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANGLE SDK installation failed, building without ANGLE support."
+            echo "ANGLE_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download WinRT components
+        shell: sh
+        run: python ./misc/scripts/install_winrt.py
+        continue-on-error: true
+
+      - name: Download pre-built AccessKit
+        shell: sh
+        id: accesskit-sdk
+        run: |
+          if python ./misc/scripts/install_accesskit.py; then
+            echo "ACCESSKIT_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::AccessKit SDK installation failed, building without AccessKit support."
+            echo "ACCESSKIT_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.FLAGS_BUILD }} ${{ env.FLAGS_OPTIMIZE }} ${{ env.FLAGS_MODULES }} ${{ env.FLAGS_DEBUG }} windows_subsystem=gui d3d12=no accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }} angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
+          platform: windows
+          target: editor
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: fantastica-windows-editor-mono
+        continue-on-error: true
+
+      - name: Generate .NET glue
+        shell: sh
+        run: |
+          ./bin/godot.windows.editor.x86_64.llvm.mono.console.exe --headless --generate-mono-glue ./modules/mono/glue
+
+      - name: Build .NET assemblies (GodotSharp)
+        shell: sh
+        run: |
+          dotnet --info
+          python ./modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=windows
+
+      - name: Sanity check
+        shell: sh
+        run: |
+          ./bin/godot.windows.editor.x86_64.llvm.mono.console.exe --version
+
+      - name: Prepare artifact
+        run: |
+          Remove-Item bin/build_deps -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item bin/* -Include *.exp,*.lib -Force -ErrorAction SilentlyContinue
+          Rename-Item bin/godot.windows.editor.x86_64.llvm.mono.console.exe "Godot_${{ inputs.version }}-fantastica_windows_console.exe"
+          Rename-Item bin/godot.windows.editor.x86_64.llvm.mono.exe "Godot_${{ inputs.version }}-fantastica_windows.exe"
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: Godot_${{ inputs.version }}-fantastica_windows
+
+  build-macos:
+    runs-on: macos-26
+    name: 🍎 macOS Editor (Mono, Apple Silicon)
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: fantastica-macos-editor-mono
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download pre-built ANGLE
+        shell: sh
+        id: angle-sdk
+        run: |
+          if python ./misc/scripts/install_angle.py; then
+            echo "ANGLE_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANGLE SDK installation failed, building without ANGLE support."
+            echo "ANGLE_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download pre-built AccessKit
+        shell: sh
+        id: accesskit-sdk
+        run: |
+          if python3 ./misc/scripts/install_accesskit.py; then
+            echo "ACCESSKIT_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::AccessKit SDK installation failed, building without AccessKit support."
+            echo "ACCESSKIT_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Vulkan SDK
+        id: vulkan-sdk
+        run: |
+          if sh misc/scripts/install_vulkan_sdk_macos.sh; then
+            echo "VULKAN_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::macOS: Vulkan SDK installation failed, building without Vulkan support."
+            echo "VULKAN_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Compilation (arm64)
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.FLAGS_BUILD }} ${{ env.FLAGS_OPTIMIZE }} ${{ env.FLAGS_MODULES }} ${{ env.FLAGS_DEBUG }} arch=arm64 vulkan=${{ steps.vulkan-sdk.outputs.VULKAN_ENABLED }} accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }} angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
+          platform: macos
+          target: editor
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: fantastica-macos-editor-mono
+        continue-on-error: true
+
+      - name: Generate .NET glue
+        run: |
+          ./bin/godot.macos.editor.arm64.mono --headless --generate-mono-glue ./modules/mono/glue
+
+      - name: Build .NET assemblies (GodotSharp)
+        run: |
+          dotnet --info
+          python ./modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=macos
+
+      - name: Sanity check
+        run: |
+          ./bin/godot.macos.editor.arm64.mono --version
+
+      - name: Prepare artifact
+        run: |
+          rm -rf ./bin/build_deps
+          mv ./bin/godot.macos.editor.arm64.mono "./bin/Godot_${{ inputs.version }}-fantastica_macos"
+          chmod +x "./bin/Godot_${{ inputs.version }}-fantastica_macos"
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: Godot_${{ inputs.version }}-fantastica_macos
